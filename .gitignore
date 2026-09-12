@@ -1,0 +1,31 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# ---- OS / 编辑器 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- 采集/生成的数据与大文件(可由脚本重新生成) ----
+data/raw/
+data/demo/
+data/metadata.json
+data/news/news.db
+data/news/*.model
+data/news/sentiment_axis.json
+data/news/cache/
+
+# ---- 生成的网页产物(由 make_web.py / news_*.py 生成) ----
+web/data.json
+web/news_impact.json
+web/news_wordcloud.json
+web/index.html

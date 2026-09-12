@@ -1,0 +1,15 @@
+[project]
+name = "futures-news-lab"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "akshare>=1.18.94",
+    "gensim>=4.4.0",
+    "jieba>=0.42.1",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.3",
+    "pandas>=3.0.5",
+    "scikit-learn>=1.9.0",
+]
