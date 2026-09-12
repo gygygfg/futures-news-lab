@@ -45,8 +45,6 @@ python -m http.server 8000 -d web   # 或直接双击 index.html
 
 **公网访问（已部署）**：<https://futures.bxsr.dpdns.org>
 
-映射链路：本机 `python -m http.server 8001 -d web` → autossh 反向隧道 `-R 6481:127.0.0.1:8001` → 远程服务器 nginx `futures.bxsr.dpdns.org`（`proxy_pass http://127.0.0.1:6481`）。
-
 页面功能：
 - 顶部切换 **品种** 与 **粒度**（日线 / 60分钟）。
 - KPI：样本量、年化波动率、最大回撤。
