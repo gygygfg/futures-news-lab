@@ -118,15 +118,18 @@ def symbol_series(sym: str, sent_daily: pd.DataFrame, macro: pd.DataFrame) -> pd
 
 def analyse(sym: str, sent: pd.DataFrame, macro: pd.DataFrame, sent_daily: pd.DataFrame) -> dict:
     df = symbol_series(sym, sent, macro)
+    # 仅用"有新闻情绪"的交易日做统计, 避免被无新闻的历史日期稀释(价格历史可回溯至2005+)
+    valid = df[df["sym_sent"] != 0]
+    valid_macro = df[df["macro"] != 0]
 
-    def corr(a, b):
-        m = df[[a, b]].dropna()
+    def corr(data, a, b):
+        m = data[[a, b]].dropna()
         if len(m) < 10 or m[a].std() == 0 or m[b].std() == 0:
             return None
         return float(m[a].corr(m[b]))
 
     # OLS: 未来2周收益 ~ 近2周情绪
-    m = df[["sym_sent", "ret_fwd"]].dropna()
+    m = valid[["sym_sent", "ret_fwd"]].dropna()
     if len(m) > 10 and m["sym_sent"].std() > 0:
         lr = stats.linregress(m["sym_sent"], m["ret_fwd"])
         slope, tstat, r2 = float(lr.slope), float(lr.rvalue), float(lr.rvalue ** 2)
@@ -135,7 +138,6 @@ def analyse(sym: str, sent: pd.DataFrame, macro: pd.DataFrame, sent_daily: pd.Da
 
     # 事件研究: 情绪分位 -> 未来2周收益均值
     ev = []
-    valid = df[df["sym_sent"] != 0]
     if len(valid) >= 20:
         q = pd.qcut(valid["sym_sent"], 5, duplicates="drop")
         for k, grp in valid.groupby(q, observed=True):
@@ -175,10 +177,10 @@ def analyse(sym: str, sent: pd.DataFrame, macro: pd.DataFrame, sent_daily: pd.Da
         "horizon_days": HORIZON_DAYS,
         "n_days": int((df["sym_sent"] != 0).sum()),
         "n_news": int(df["sym_sent"].ne(0).sum()),
-        "corr_same": corr("sym_sent", "ret"),
-        "corr_next": corr("sym_sent", "ret_next"),
-        "corr_fwd": corr("sym_sent", "ret_fwd"),
-        "macro_corr_fwd": corr("macro", "ret_fwd"),
+        "corr_same": corr(valid, "sym_sent", "ret"),
+        "corr_next": corr(valid, "sym_sent", "ret_next"),
+        "corr_fwd": corr(valid, "sym_sent", "ret_fwd"),
+        "macro_corr_fwd": corr(valid_macro, "macro", "ret_fwd"),
         "slope": slope,
         "tstat": tstat,
         "r2": r2,

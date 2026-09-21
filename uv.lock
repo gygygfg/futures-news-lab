@@ -411,31 +411,6 @@ wheels = [
 ]
 
 [[package]]
-name = "data-mining"
-version = "0.1.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "akshare" },
-    { name = "gensim" },
-    { name = "jieba" },
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "scikit-learn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "akshare", specifier = ">=1.18.94" },
-    { name = "gensim", specifier = ">=4.4.0" },
-    { name = "jieba", specifier = ">=0.42.1" },
-    { name = "matplotlib", specifier = ">=3.11.1" },
-    { name = "numpy", specifier = ">=2.5.3" },
-    { name = "pandas", specifier = ">=3.0.5" },
-    { name = "scikit-learn", specifier = ">=1.9.0" },
-]
-
-[[package]]
 name = "decorator"
 version = "5.3.1"
 source = { registry = "https://pypi.tuna.tsinghua.edu.cn/simple" }
@@ -508,6 +483,31 @@ wheels = [
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/21/ff/2eab37d43f2e2ccc0993959d8f2605d9a68470082c592684ac98611ee70a/fonttools-4.64.0-cp315-cp315t-win32.whl", hash = "sha256:f8669ce37851b597d3435b91fefa51139e58d506ca449ca0e5bb68c63b8b6d2b", size = 2463614, upload-time = "2026-08-31T15:44:27.198Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/dc/8d/8bdff3ea656592197c8ef5062774221885468ffa01d8b0dc782dae23a83a/fonttools-4.64.0-cp315-cp315t-win_amd64.whl", hash = "sha256:89356c0793b474af7e49ec90d39fb2363e2341516a90460e38231df5ebe8acd5", size = 2512422, upload-time = "2026-08-31T15:44:29.478Z" },
     { url = "https://pypi.tuna.tsinghua.edu.cn/packages/82/f8/7188153c4b265c899cd035de6a062677d51f67118a4ba640902bd9683e90/fonttools-4.64.0-py3-none-any.whl", hash = "sha256:4a05783ff54ce4c7a28f18e5772efdf63c219374bd9ffc55452182e1cef8be60", size = 1195327, upload-time = "2026-08-31T15:44:31.741Z" },
+]
+
+[[package]]
+name = "futures-news-lab"
+version = "0.1.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "akshare" },
+    { name = "gensim" },
+    { name = "jieba" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scikit-learn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "akshare", specifier = ">=1.18.94" },
+    { name = "gensim", specifier = ">=4.4.0" },
+    { name = "jieba", specifier = ">=0.42.1" },
+    { name = "matplotlib", specifier = ">=3.11.1" },
+    { name = "numpy", specifier = ">=2.5.3" },
+    { name = "pandas", specifier = ">=3.0.5" },
+    { name = "scikit-learn", specifier = ">=1.9.0" },
 ]
 
 [[package]]

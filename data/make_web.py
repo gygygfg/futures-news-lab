@@ -36,7 +36,17 @@ def analyse(kind: str, symbol: str) -> dict:
     ret = ((d["close"] / d["close"].shift(1) - 1) * 100).values
     base = d["close"]
     mdd = float((base / base.cummax() - 1).min())
-    ann_vol = float(ret[ret == ret].std() * np.sqrt(252 if kind == "daily" else 252 * 4))
+    r = ret[np.isfinite(ret)]
+    ann_vol = float(r.std() * np.sqrt(252 if kind == "daily" else 252 * 4))
+
+    # 偏度 / 峰度(超额) 与收益率分布直方图(叠加正态拟合)
+    skew = float(pd.Series(r).skew())
+    kurt = float(pd.Series(r).kurt())
+    mu, sd = float(r.mean()), float(r.std(ddof=1))
+    counts, edges = np.histogram(r, bins=40)
+    centers = (edges[:-1] + edges[1:]) / 2
+    width = float(edges[1] - edges[0])
+    normal = (len(r) * width / (sd * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((centers - mu) / sd) ** 2) if sd > 0 else np.zeros_like(centers)
 
     return {
         "symbol": symbol,
@@ -46,6 +56,13 @@ def analyse(kind: str, symbol: str) -> dict:
         "span": [d["date"].iloc[0].isoformat(), d["date"].iloc[-1].isoformat()],
         "ann_vol": ann_vol,
         "mdd": mdd,
+        "skew": skew,
+        "kurt": kurt,
+        "hist": {
+            "centers": [round(float(x), 3) for x in centers],
+            "counts": [int(x) for x in counts],
+            "normal": [round(float(x), 2) for x in normal],
+        },
         # 图表数据
         "kline": [
             [row.date.timestamp() * 1000, row.open, row.close, row.low, row.high, row.volume]
@@ -72,10 +89,10 @@ def main() -> None:
 
     # 汇总打印
     print(f"[web] 文件: {OUT / 'index.html'} ({len(html)/1024:.0f}KB), {DIST.name}")
-    print(f"{'品种':<6}{'粒度':<7}{'样本':>6}{'年化波动':>10}{'最大回撤':>10}")
+    print(f"{'品种':<6}{'粒度':<7}{'样本':>6}{'年化波动':>10}{'最大回撤':>10}{'偏度':>9}{'峰度':>9}")
     for s in payload["symbols"]:
         print(f"{s['name']:<6}{('日' if s['kind']=='daily' else '时'):<6}{s['n']:>6}"
-              f"{s['ann_vol']:>9.2f}%{s['mdd'] * 100:>9.2f}%")
+              f"{s['ann_vol']:>9.2f}%{s['mdd'] * 100:>9.2f}%{s['skew']:>9.2f}{s['kurt']:>9.2f}")
 
 
 TEMPLATE = r"""<!DOCTYPE html>
@@ -141,6 +158,11 @@ TEMPLATE = r"""<!DOCTYPE html>
     <div class="card"><h3>K线价格 + 成交量</h3><div id="kline" class="chart"></div></div>
     <div class="card"><h3>单期收益(%, 时间序列)</h3><div id="ret" class="chart"></div></div>
   </div>
+  <div class="grid2">
+    <div class="card"><h3>收益率分布 · 偏度/峰度(直方图 + 正态拟合)</h3><div id="dist" class="chart" style="height:320px"></div>
+      <div class="sub" id="distNote" style="color:var(--sub);font-size:12px;margin:6px 6px 0"></div>
+    </div>
+  </div>
   <div class="card" style="margin-top:14px">
     <h3>新闻情绪 vs 未来2周收益(自建embedding情感)</h3>
     <div id="newsStats" class="kpis" style="margin:0 0 10px"></div>
@@ -194,6 +216,8 @@ function render(){
     ['样本量', s.n, 'ok'],
     ['年化波动率', (s.ann_vol).toFixed(2) + '%', 'ok'],
     ['最大回撤', (s.mdd * 100).toFixed(2) + '%', 'bad'],
+    ['偏度', s.skew.toFixed(2), s.skew < 0 ? 'bad' : 'ok'],
+    ['峰度(超额)', s.kurt.toFixed(2), s.kurt > 0 ? 'bad' : 'ok'],
   ];
   document.getElementById('kpis').innerHTML = kpis.map(k=>`<div class="kpi"><div class="l">${k[0]}</div><div class="v ${k[2]}">${k[1]}</div></div>`).join('');
   document.getElementById('foot').innerHTML = DATA.note;
@@ -246,6 +270,27 @@ function render(){
   });
   rchart.off('click');
   rchart.on('click', p=>{ const day=clickedDay(p, s); if(day) showNewsForDate(s.symbol, day); });
+
+  // 收益率分布(直方图 + 正态拟合) · 偏度/峰度
+  const dchart = echarts.init(document.getElementById('dist'));
+  dchart.setOption({
+    backgroundColor:'transparent',
+    tooltip:{trigger:'axis',backgroundColor:'#0b1018',borderColor:'#2a3550',textStyle:{color:'#e6ebf5'},
+      formatter:ps=>{const i=ps[0].dataIndex;return `收益 ${s.hist.centers[i].toFixed(2)}%<br/>频数 ${s.hist.counts[i]}<br/>正态 ${s.hist.normal[i].toFixed(1)}`;}},
+    legend:{data:['频数','正态拟合'],textStyle:{color:'#e6ebf5'},top:0},
+    grid:{left:'55px',right:'20px',top:34,bottom:48},
+    xAxis:{type:'category',data:s.hist.centers.map(x=>x.toFixed(2)),name:'收益%',nameLocation:'middle',nameGap:28,
+      axisLine:{lineStyle:{color:'#2a3550'}},axisLabel:{color:'#8b98b3',interval:Math.ceil(s.hist.centers.length/12)}},
+    yAxis:{splitLine:{lineStyle:{color:'#1c2436'}},axisLabel:{color:'#8b98b3'}},
+    series:[
+      {name:'频数',type:'bar',data:s.hist.counts,itemStyle:{color:'#3a7bd5'}},
+      {name:'正态拟合',type:'line',data:s.hist.normal,showSymbol:false,smooth:true,lineStyle:{color:'#ffb84d',width:1.6}}
+    ]
+  });
+  document.getElementById('distNote').textContent =
+    `偏度 ${s.skew.toFixed(3)}（${s.skew<0?'左偏·下跌尾部更厚':'右偏·上涨尾部更厚'}） · `
+    + `超额峰度 ${s.kurt.toFixed(3)}（${s.kurt>0?'尖峰厚尾·极端行情更频繁':'相对正态更平坦'}）`;
+
   renderNews(s);
   renderWordcloud(s);
 }

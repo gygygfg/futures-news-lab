@@ -4,13 +4,15 @@
 - 01_daily_prices.png     6品种日线价格(归一化)
 - 02_daily_volume.png     RB 日线价格+成交量
 - 03_hourly_kline.png     RB 近8个月60分钟K线
-- 04_rainbow.png          均线策略净值(日线, RB/CU/AU/IF)
+- 04_strategy.png         均线策略净值(日线, RB/CU/AU/IF)
+- 05_return_dist.png      日线收益率分布 + 偏度/峰度
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 import matplotlib
@@ -65,7 +67,7 @@ def plot_daily_prices() -> None:
         ax.yaxis.set_major_locator(MaxNLocator(4))
         ax.xaxis.set_major_locator(mdates.YearLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
-    fig.suptitle("近5年 主力连续日线价格(归一化=100)", fontsize=13)
+    fig.suptitle("全历史 主力连续日线价格(归一化=100)", fontsize=13)
     fig.tight_layout()
     fig.savefig(OUT / "01_daily_prices.png", dpi=110)
     plt.close(fig)
@@ -109,7 +111,7 @@ def plot_strategy() -> None:
         eq = strategy_equity(load_daily(sym))
         ax.plot(eq.index, eq["strat"], lw=1.2, label=f"{NAMES[sym]} MA10×40 策略")
     ax.plot(eq.index, eq["buyhold"], lw=1.0, ls="--", color="tab:gray", label="buy & hold (IF0)")
-    ax.set_title("双均线策略累积收益(日线, 近5年)", fontsize=12)
+    ax.set_title("双均线策略累积收益(日线, 全历史)", fontsize=12)
     ax.legend(fontsize=9)
     ax.grid(alpha=0.3)
     fig.tight_layout()
@@ -117,16 +119,40 @@ def plot_strategy() -> None:
     plt.close(fig)
 
 
+def plot_return_dist() -> None:
+    """收益率分布直方图 + 正态拟合, 标注偏度/超额峰度。"""
+    fig, axes = plt.subplots(2, 3, figsize=(15, 7))
+    for ax, sym in zip(axes.ravel(), SYMBOLS):
+        r = daily_returns(load_daily(sym)).values * 100
+        mu, sd = float(np.mean(r)), float(np.std(r, ddof=1))
+        ax.hist(r, bins=50, density=True, color="tab:blue", alpha=0.55, label="收益率分布")
+        xs = np.linspace(mu - 4 * sd, mu + 4 * sd, 200)
+        pdf = np.exp(-0.5 * ((xs - mu) / sd) ** 2) / (sd * np.sqrt(2 * np.pi))
+        ax.plot(xs, pdf, color="tab:orange", lw=1.4, label="正态拟合")
+        sk = float(pd.Series(r).skew())
+        ku = float(pd.Series(r).kurt())
+        ax.set_title(f"{NAMES[sym]} ({sym})  偏度 {sk:+.2f}  峰度 {ku:+.2f}", fontsize=10)
+        ax.grid(alpha=0.3)
+        ax.yaxis.set_major_locator(MaxNLocator(4))
+    axes.ravel()[0].legend(fontsize=8)
+    fig.suptitle("日线收益率分布(直方图) vs 正态拟合 — 偏度 / 超额峰度", fontsize=13)
+    fig.tight_layout()
+    fig.savefig(OUT / "05_return_dist.png", dpi=110)
+    plt.close(fig)
+
+
 def print_stats() -> None:
-    print("=== 日线收益率统计(近5年) ===")
-    print(f"{'品种':<8}{'年化波动':>10}{'年化收益':>10}{'最大回撤':>10}")
+    print("=== 日线收益率统计(全历史) ===")
+    print(f"{'品种':<8}{'年化波动':>10}{'年化收益':>10}{'最大回撤':>10}{'偏度':>9}{'峰度':>9}")
     for sym in SYMBOLS:
         ret = daily_returns(load_daily(sym))
         base = load_daily(sym)["close"]
         ann_vol = ret.std() * (252 ** 0.5)
         ann_ret = base.iloc[-1] / base.iloc[0] - 1
         mdd = (base / base.cummax() - 1).min()
-        print(f"{NAMES[sym]:<8}{ann_vol:>10.2%}{ann_ret:>10.1%}{mdd:>10.1%}")
+        skew = ret.skew()
+        kurt = ret.kurt()
+        print(f"{NAMES[sym]:<8}{ann_vol:>10.2%}{ann_ret:>10.1%}{mdd:>10.1%}{skew:>9.2f}{kurt:>9.2f}")
 
 
 def main() -> None:
@@ -134,6 +160,7 @@ def main() -> None:
     plot_rb_volume()
     plot_hourly_kline()
     plot_strategy()
+    plot_return_dist()
     print_stats()
     print(f"[demo] 图表已保存至 {OUT}/")
 
