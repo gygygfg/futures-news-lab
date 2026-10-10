@@ -21,6 +21,8 @@ data/demo/
 data/metadata.json
 data/news/news.db
 data/news/*.model
+data/news/*.model.*
+data/news/*.npy
 data/news/sentiment_axis.json
 data/news/cache/
 

@@ -48,6 +48,13 @@ def analyse(kind: str, symbol: str) -> dict:
     width = float(edges[1] - edges[0])
     normal = (len(r) * width / (sd * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((centers - mu) / sd) ** 2) if sd > 0 else np.zeros_like(centers)
 
+    # 统计指标
+    years = (d["date"].iloc[-1] - d["date"].iloc[0]).days / 365.25
+    cagr = float((base.iloc[-1] / base.iloc[0]) ** (1 / years) - 1) * 100 if years > 0 and base.iloc[0] > 0 else None
+    sharpe = float(cagr / ann_vol) if (cagr is not None and ann_vol > 0) else None
+    win_rate = float((r > 0).mean())
+    var95 = float(np.percentile(r, 5))
+
     return {
         "symbol": symbol,
         "name": NAMES[symbol],
@@ -58,6 +65,13 @@ def analyse(kind: str, symbol: str) -> dict:
         "mdd": mdd,
         "skew": skew,
         "kurt": kurt,
+        "cagr": cagr,
+        "sharpe": sharpe,
+        "win_rate": win_rate,
+        "var95": var95,
+        "mean_ret": mu,
+        "best": float(r.max()),
+        "worst": float(r.min()),
         "hist": {
             "centers": [round(float(x), 3) for x in centers],
             "counts": [int(x) for x in counts],
@@ -130,6 +144,15 @@ TEMPLATE = r"""<!DOCTYPE html>
   .modal-box{background:var(--card);border:1px solid var(--line);border-radius:10px;max-width:760px;width:90%;max-height:80vh;overflow:auto;padding:16px 18px}
   .modal-head{display:flex;justify-content:space-between;align-items:center;font-weight:600;margin-bottom:10px}
   .modal-head button{background:transparent;color:var(--sub);border:none;font-size:16px;cursor:pointer}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--sub);font-weight:600;position:sticky;top:0;background:var(--card)}
+  tbody tr:hover{background:#0b1018;cursor:pointer}
+  .tbl-wrap{max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+  .dl-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  a.btn-link{display:inline-block;background:#0b1018;color:var(--txt);border:1px solid var(--line);padding:6px 10px;border-radius:6px;font-size:13px;text-decoration:none}
+  a.btn-link:hover{border-color:var(--ac);color:var(--ac)}
   @media(max-width:1000px){.grid{grid-template-columns:1fr}}
 </style>
 </head>
@@ -162,6 +185,22 @@ TEMPLATE = r"""<!DOCTYPE html>
     <div class="card"><h3>收益率分布 · 偏度/峰度(直方图 + 正态拟合)</h3><div id="dist" class="chart" style="height:320px"></div>
       <div class="sub" id="distNote" style="color:var(--sub);font-size:12px;margin:6px 6px 0"></div>
     </div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>数据统计 · 全部品种(当前粒度)</h3>
+    <div class="sub" style="color:var(--sub);font-size:12px;margin:6px 6px 8px">点击任意行切换该品种；年化收益=CAGR，夏普=年化收益/年化波动(无风险利率取0)。</div>
+    <div class="tbl-wrap" id="statsTable"></div>
+  </div>
+  <div class="card" style="margin-top:14px">
+    <h3>数据下载</h3>
+    <div class="dl-bar">
+      <button id="dlCur">下载当前品种 CSV</button>
+      <button id="dlAll">下载全部品种 CSV</button>
+      <a class="btn-link" href="data.json" download>下载 data.json(原始图表数据)</a>
+      <a class="btn-link" href="news_impact.json" download>下载 news_impact.json</a>
+      <a class="btn-link" href="news_wordcloud.json" download>下载 news_wordcloud.json</a>
+    </div>
+    <div class="sub" id="dlNote" style="color:var(--sub);font-size:12px;margin:8px 6px 0"></div>
   </div>
   <div class="card" style="margin-top:14px">
     <h3>新闻情绪 vs 未来2周收益(自建embedding情感)</h3>
@@ -291,6 +330,7 @@ function render(){
     `偏度 ${s.skew.toFixed(3)}（${s.skew<0?'左偏·下跌尾部更厚':'右偏·上涨尾部更厚'}） · `
     + `超额峰度 ${s.kurt.toFixed(3)}（${s.kurt>0?'尖峰厚尾·极端行情更频繁':'相对正态更平坦'}）`;
 
+  renderStats(s);
   renderNews(s);
   renderWordcloud(s);
 }
@@ -301,6 +341,46 @@ window.addEventListener('resize',()=>{[].forEach.call(document.querySelectorAll(
 function buildRetSeries(s){
   const clos=s.kline.map(r=>r[2]);
   return clos.map((c,i)=> i===0?null:+( (c/clos[i-1]-1)*100 ).toFixed(3));
+}
+
+// ---- 数据统计表 ----
+function renderStats(s){
+  const box=document.getElementById('statsTable');
+  if(!box) return;
+  const rows=DATA.symbols.filter(x=>x.kind===s.kind);
+  const f=(x,d=2)=>x==null?'—':Number(x).toFixed(d);
+  const pct=x=>x==null?'—':Number(x).toFixed(2)+'%';
+  const head='<thead><tr><th>品种</th><th>样本</th><th>起始日</th><th>年化收益</th><th>年化波动</th>'
+    +'<th>夏普</th><th>最大回撤</th><th>偏度</th><th>峰度</th><th>胜率</th><th>VaR95</th></tr></thead>';
+  const body=rows.map(x=>`<tr data-sym="${x.symbol}" style="${x.symbol===s.symbol?'background:#0b1018':''}">
+      <td>${x.name} (${x.symbol})</td><td>${x.n}</td><td>${x.span[0].slice(0,10)}</td>
+      <td>${pct(x.cagr)}</td><td>${pct(x.ann_vol)}</td><td>${f(x.sharpe)}</td>
+      <td style="color:#ff5c5c">${pct(x.mdd*100)}</td><td>${f(x.skew)}</td><td>${f(x.kurt)}</td>
+      <td>${pct(x.win_rate*100)}</td><td style="color:#ff5c5c">${pct(x.var95)}</td></tr>`).join('');
+  box.innerHTML='<table>'+head+'<tbody>'+body+'</tbody></table>';
+  box.querySelectorAll('tr[data-sym]').forEach(tr=>tr.onclick=()=>{
+    document.getElementById('symbol').value=tr.dataset.sym; render();
+  });
+}
+
+// ---- 数据下载(纯前端生成 CSV) ----
+function download(name, text, mime){
+  const blob=new Blob(['\ufeff'+text],{type:mime||'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},0);
+}
+function toCSV(s){
+  const lines=['date,open,high,low,close,volume'];
+  s.kline.forEach((r,i)=>lines.push([s.dates[i], r[1], r[4], r[3], r[2], r[5]].join(',')));
+  return lines.join('\n');
+}
+function toCSVAll(){
+  const lines=['symbol,name,kind,date,open,high,low,close,volume'];
+  DATA.symbols.forEach(s=>s.kline.forEach((r,i)=>lines.push(
+    [s.symbol, s.name, s.kind, s.dates[i], r[1], r[4], r[3], r[2], r[5]].join(','))));
+  return lines.join('\n');
 }
 
 // 文章链接: 原文优先(经济日历已由后端构造为当日真实页面), 否则回退来源主页
@@ -433,6 +513,10 @@ function showNewsForDate(symbol, day){
   document.getElementById('btn').addEventListener('click',render);
   document.getElementById('symbol').addEventListener('change',render);
   document.getElementById('kind').addEventListener('change',render);
+  // 数据下载
+  document.getElementById('dlNote').textContent='CSV 由当前页面内嵌数据实时生成，字段: date,open,high,low,close,volume（全部品种含 symbol,name,kind）。';
+  document.getElementById('dlCur').addEventListener('click',()=>{const s=pick();download(`${s.symbol}_${s.kind}.csv`,toCSV(s));});
+  document.getElementById('dlAll').addEventListener('click',()=>download('futures_all.csv',toCSVAll()));
   // 新闻情绪数据(运行时加载), 加载后重绘以叠加"显著相关日"标记
   fetch('news_impact.json').then(r=>r.ok?r.json():null).then(j=>{if(j){NEWS=j;render();}})
     .catch(()=>renderNews(pick()));
